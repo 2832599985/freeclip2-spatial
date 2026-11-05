@@ -1,6 +1,6 @@
-# FreeClip 2 空间音频（Tauri 重制版）
+# FreeClip 2 空间音频（Tauri 版）
 
-HUAWEI FreeClip 2 的空间音频控制工具，用 **Tauri 2 + Rust + WebView2** 重写了原版 Python/PySide6 程序。个人自用项目，与华为无关联。
+HUAWEI FreeClip 2 的空间音频控制工具，基于 **Tauri 2 + Rust + WebView2**。个人自用项目，与华为无关联。
 
 ## 功能
 
@@ -22,6 +22,17 @@ HUAWEI FreeClip 2 的空间音频控制工具，用 **Tauri 2 + Rust + WebView2*
 
 ## 自行构建
 
+一键构建（Windows）：
+
+```powershell
+.\build.ps1              # 只生成单文件 exe
+.\build.ps1 -Installer   # 同时生成 MSI 安装包
+```
+
+也可以直接双击 `build.bat`。脚本会自动检查 Node/Rust 环境、安装依赖、刷新图标资源并调用 Tauri 构建。
+
+手动构建：
+
 ```bash
 npm install
 npx tauri build --no-bundle   # 产物: src-tauri/target/release/freeclip2-spatial.exe
@@ -33,6 +44,10 @@ npx tauri build               # 额外生成 MSI 安装包
 ```bash
 npx tauri dev
 ```
+
+## 开源协议
+
+[MIT License](LICENSE)
 
 ## 为什么没有「蓝牙低延迟 / 游戏模式」
 
