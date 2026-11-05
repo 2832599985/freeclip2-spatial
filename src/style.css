@@ -1,0 +1,218 @@
+:root {
+  /* Light theme, matching HUAWEI AI Life / Smart Audio app */
+  --bg: #f4f6fb;
+  --surface: #ffffff;
+  --surface-2: #f6f8fc;
+  --surface-3: #eceff6;
+  --border: #e6eaf2;
+  --border-hover: #d3dae8;
+  --text: #1a1d26;
+  --text-dim: #6b7285;
+  --text-faint: #9aa2b3;
+  --accent: #4b6fff;
+  --accent-soft: rgba(75, 111, 255, 0.09);
+  --accent-glow: rgba(75, 111, 255, 0.28);
+  --green: #2fbf75;
+  --amber: #e8a317;
+  --red: #e85c5c;
+  --radius: 14px;
+  --radius-sm: 10px;
+  font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "PingFang SC", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #app { height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+.app-shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(1100px 500px at 15% -10%, rgba(75, 111, 255, 0.07), transparent 60%),
+    radial-gradient(800px 400px at 100% 100%, rgba(47, 191, 117, 0.04), transparent 60%),
+    var(--bg);
+}
+
+/* ---------- custom titlebar ---------- */
+.titlebar {
+  height: 44px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 16px;
+  -webkit-app-region: drag;
+}
+.brand { display: flex; align-items: center; gap: 9px; }
+.brand-mark {
+  width: 22px; height: 22px;
+  object-fit: contain;
+  display: block;
+}
+.brand-name { font-size: 12.5px; font-weight: 600; letter-spacing: 0.3px; color: var(--text-dim); }
+.titlebar-actions { display: flex; gap: 2px; -webkit-app-region: no-drag; }
+.tb-btn {
+  width: 34px; height: 30px;
+  border: none; background: transparent; color: var(--text-dim);
+  border-radius: 7px; cursor: pointer; font-size: 13px;
+  display: grid; place-items: center;
+  transition: background .15s, color .15s;
+}
+.tb-btn:hover { background: var(--surface-3); color: var(--text); }
+.tb-btn.danger:hover { background: rgba(242,109,109,.18); color: var(--red); }
+
+/* ---------- scroll body ---------- */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.content::-webkit-scrollbar { width: 6px; }
+.content::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 3px; }
+
+/* ---------- hero / connection ---------- */
+.hero { display: flex; align-items: center; gap: 14px; padding: 4px 2px 2px; }
+.hero-icon {
+  width: 68px; height: 68px; flex: none;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #fbfcff, #eef1f9);
+  border: 1px solid var(--border);
+  display: grid; place-items: center;
+  position: relative;
+  box-shadow: inset 0 1px 0 #fff;
+}
+.hero-icon .hero-product {
+  width: 62px; height: 62px; object-fit: contain;
+  filter: drop-shadow(0 3px 7px rgba(60,70,100,.14));
+  animation: floaty 4s ease-in-out infinite;
+}
+@keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+.hero-icon .pulse {
+  position: absolute; inset: 0; border-radius: 16px;
+  border: 1px solid var(--green); opacity: 0;
+}
+.connected .hero-icon .pulse { animation: pulse 2.6s ease-out infinite; }
+@keyframes pulse { 0% { opacity: .55; transform: scale(1); } 100% { opacity: 0; transform: scale(1.35); } }
+.hero-text { flex: 1; min-width: 0; }
+.hero-title { font-size: 18px; font-weight: 650; letter-spacing: .2px; }
+.hero-sub { font-size: 11.5px; color: var(--text-dim); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-pill {
+  flex: none;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 550;
+  padding: 6px 11px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.status-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }
+.status-pill.ok { color: var(--green); background: rgba(74,222,155,.08); border-color: rgba(74,222,155,.25); }
+.status-pill.ok .dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.status-pill.err { color: var(--red); background: rgba(242,109,109,.08); border-color: rgba(242,109,109,.22); }
+.status-pill.err .dot { background: var(--red); }
+
+/* ---------- section ---------- */
+.section { display: flex; flex-direction: column; gap: 10px; }
+.section-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
+.section-label { font-size: 11px; font-weight: 650; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text-faint); }
+.section-hint { font-size: 11px; color: var(--text-faint); }
+
+/* ---------- mode cards ---------- */
+.modes { display: flex; flex-direction: column; gap: 8px; }
+.mode {
+  display: flex; align-items: center; gap: 13px;
+  padding: 14px 15px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color .16s, background .16s, transform .12s;
+  text-align: left; color: var(--text);
+  width: 100%;
+}
+.mode:hover:not(:disabled) { border-color: var(--border-hover); background: var(--surface-2); }
+.mode:active:not(:disabled) { transform: scale(.995); }
+.mode:disabled { opacity: .5; cursor: not-allowed; }
+.mode.active { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px rgba(108,140,255,.12); }
+.mode-glyph {
+  width: 42px; height: 42px; flex: none;
+  border-radius: 12px;
+  background: #f0f3fa;
+  border: 1px solid var(--border);
+  display: grid; place-items: center;
+  overflow: hidden;
+}
+.mode.active .mode-glyph { background: #e8edff; border-color: rgba(75,111,255,.35); }
+.mode-glyph > svg { width: 38px; height: 38px; }
+/* Let the official Lotties keep their own Huawei-blue / dark artwork. */
+.mode-body { flex: 1; min-width: 0; }
+.mode-name { font-size: 13.5px; font-weight: 600; }
+.mode-desc { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.mode-check {
+  width: 18px; height: 18px; flex: none;
+  border-radius: 50%; border: 1.5px solid var(--border-hover);
+  display: grid; place-items: center;
+}
+.mode.active .mode-check { border-color: var(--accent); background: var(--accent); }
+.mode.active .mode-check::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #ffffff; }
+
+/* ---------- battery ---------- */
+.batteries { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.batt {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 13px 8px 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.batt-ring { position: relative; width: 46px; height: 46px; }
+.batt-ring svg { width: 46px; height: 46px; transform: rotate(-90deg); }
+.batt-ring .track { fill: none; stroke: var(--surface-3); stroke-width: 4.5; }
+.batt-ring .bar { fill: none; stroke: var(--green); stroke-width: 4.5; stroke-linecap: round; transition: stroke-dasharray .5s ease, stroke .3s; }
+.batt-ring .val {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 11px; font-weight: 650;
+}
+.batt-label { font-size: 11px; color: var(--text-dim); }
+
+/* ---------- footer ---------- */
+.footer { display: flex; gap: 8px; margin-top: auto; padding-top: 6px; }
+.btn {
+  flex: 1; padding: 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-dim); font-size: 12px; font-weight: 550;
+  cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+}
+.btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-hover); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn svg { width: 14px; height: 14px; }
+.version { text-align: center; font-size: 10.5px; color: var(--text-faint); padding-top: 4px; }
+
+/* ---------- toast ---------- */
+.toast {
+  position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 14px);
+  background: var(--surface-3); border: 1px solid var(--border-hover);
+  color: var(--text); font-size: 12px;
+  padding: 9px 16px; border-radius: 999px;
+  box-shadow: 0 8px 30px rgba(30,40,70,.18);
+  opacity: 0; pointer-events: none;
+  transition: opacity .22s, transform .22s;
+  z-index: 50; max-width: 90%;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.err { border-color: rgba(242,109,109,.5); color: var(--red); }
+
+/* ---------- toast / spinner ---------- */
+.spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border-hover); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }

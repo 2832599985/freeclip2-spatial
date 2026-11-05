@@ -1,0 +1,107 @@
+/* HUAWEI AI Life "reconnected popup" (回连弹窗) — recreation.
+   Normal opaque window, centered, ~0.6x of original size. Readable text. */
+
+:root {
+  font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "PingFang SC", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: transparent; overflow: hidden; user-select: none; }
+
+.stage {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+}
+
+.card {
+  width: 228px;
+  height: 396px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 12px 36px rgba(20, 24, 40, .18), 0 2px 8px rgba(20, 24, 40, .08);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  animation: slideIn .4s cubic-bezier(.16, 1, .3, 1) forwards;
+}
+@keyframes slideIn {
+  from { transform: translateY(16px) scale(.96); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.card.leaving { animation: fadeOut .3s ease forwards; pointer-events: none; }
+@keyframes fadeOut { to { transform: translateY(10px) scale(.97); opacity: 0; } }
+
+.close {
+  position: absolute; top: 10px; right: 10px; z-index: 5;
+  width: 24px; height: 24px; border: none;
+  background: rgba(0,0,0,.04); color: #9aa0ae;
+  cursor: pointer; border-radius: 50%; font-size: 14px;
+  display: grid; place-items: center;
+  transition: background .15s, color .15s;
+}
+.close:hover { background: #f0f2f6; color: #333; }
+
+.hero {
+  position: absolute;
+  top: 26px; left: 0; right: 0;
+  height: 200px;
+  display: grid;
+  place-items: center;
+  padding: 0 10px;
+}
+.hero img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  animation: fadeIn .3s ease both;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.stats {
+  position: absolute;
+  top: 232px; left: 0; right: 0;
+  height: 44px;
+  display: grid; grid-template-columns: 1fr 1fr;
+  padding: 0 18px;
+  align-items: start;
+}
+.stat { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.stat .num {
+  font-size: 22px; font-weight: 400; color: #14161c;
+  letter-spacing: -0.5px; line-height: 1;
+  font-family: "Segoe UI", "HarmonyOS Sans SC", system-ui, sans-serif;
+}
+.stat .num small { font-size: 15px; }
+.stat .tag {
+  min-width: 28px; height: 14px; padding: 0 6px;
+  border-radius: 999px;
+  background: #8a8f99;
+  color: #fff; font-size: 8px; font-weight: 600;
+  display: grid; place-items: center;
+  letter-spacing: .4px;
+}
+.stat .tag.case { background: transparent; padding: 0; }
+.stat .tag.case svg { width: 14px; height: 14px; fill: #8a8f99; }
+
+.name {
+  position: absolute;
+  top: 280px; left: 0; right: 0;
+  height: 32px;
+  text-align: center;
+  font-size: 15px; font-weight: 400;
+  color: #14161c; letter-spacing: .3px;
+  display: grid; place-items: center;
+}
+.sub {
+  position: absolute;
+  top: 312px; left: 0; right: 0;
+  height: 20px;
+  text-align: center;
+  font-size: 10px; color: #9aa0ae;
+  display: grid; place-items: start center;
+}

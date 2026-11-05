@@ -1,0 +1,27 @@
+[package]
+name = "freeclip2-spatial"
+version = "2.0.0"
+description = "HUAWEI FreeClip 2 spatial audio control for Windows"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "freeclip2_spatial_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-ico"] }
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serialport = "4"
+thiserror = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-autostart = "2"
