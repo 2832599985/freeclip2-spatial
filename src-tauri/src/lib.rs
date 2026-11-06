@@ -269,6 +269,58 @@ fn preview_popup(tx: State<'_, WorkerTx>) {
     let _ = tx.0.lock().unwrap().send(Request::Preview);
 }
 
+/// Called by the popup page after its first paint. Until this fires the window
+/// is parked below the screen with a blank surface, so starting the entrance
+/// earlier would slide an empty rectangle into view.
+#[tauri::command]
+fn popup_ready(app: AppHandle) {
+    eprintln!("[popup] page ready at {}ms", popup_ms());
+    // Deliver the status the popup was opened with. The page's listener only
+    // exists now, so anything emitted earlier was dropped.
+    if let Some(w) = app.get_webview_window("popup") {
+        if let Some(s) = POPUP_PENDING.lock().unwrap().take() {
+            let _ = w.emit("popup-status", s);
+        }
+    }
+    if POPUP_SLIDE_STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return; // already started (watchdog beat us, or a duplicate call)
+    }
+    #[cfg(windows)]
+    if let Some(w) = app.get_webview_window("popup") {
+        begin_popup_slide(&w);
+    }
+}
+
+/// Exit animation: slide the popup back down off the bottom edge while the
+/// page fades the card out, then `dismiss_popup` destroys the window.
+#[cfg(windows)]
+fn slide_popup_down(win: tauri::WebviewWindow) {
+    std::thread::spawn(move || {
+        let Ok(pos) = win.outer_position() else { return };
+        let to_y = work_area().map(|r| r.3 + 8).unwrap_or(pos.y + 600);
+        const STEPS: i32 = 16;
+        const STEP_MS: u64 = 16;
+        for i in 1..=STEPS {
+            // ease-in quadratic: hangs for a beat, then drops away
+            let t = i as f64 / STEPS as f64;
+            let eased = t * t;
+            let y = pos.y + ((to_y - pos.y) as f64 * eased) as i32;
+            let _ = win.set_position(tauri::PhysicalPosition::new(pos.x, y));
+            std::thread::sleep(Duration::from_millis(STEP_MS));
+        }
+    });
+}
+
+#[tauri::command]
+fn slide_popup_out(app: AppHandle) {
+    #[cfg(windows)]
+    if let Some(w) = app.get_webview_window("popup") {
+        slide_popup_down(w);
+    }
+    #[cfg(not(windows))]
+    let _ = app;
+}
+
 /// Turn the Bluetooth radio off and back on. This forces Windows to
 /// re-enumerate every BTHENUM child device, which revives a COM port whose
 /// device object died while PnP still reports it as OK.
@@ -362,12 +414,11 @@ fn repair_bluetooth(app: AppHandle, shared: State<'_, SharedStatus>) -> Status {
     status
 }
 
-/// Center a window on the primary monitor's work area using Win32 physical
-/// pixels. tao's monitor size can report the panel's native mode (e.g.
-/// 3840x2160) instead of the current desktop resolution (2560x1440), which
-/// pushes a "centered" window far to the right.
+/// Primary monitor work area in physical pixels. tao's monitor size can report
+/// the panel's native mode (e.g. 3840x2160) instead of the current desktop
+/// resolution (2560x1440), which would misplace a "centered" window.
 #[cfg(windows)]
-fn center_on_work_area(win: &tauri::WebviewWindow, w: f64, h: f64) {
+fn work_area() -> Option<(i32, i32, i32, i32)> {
     use windows_sys::Win32::Foundation::RECT;
     use windows_sys::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETWORKAREA};
 
@@ -381,18 +432,81 @@ fn center_on_work_area(win: &tauri::WebviewWindow, w: f64, h: f64) {
         )
     };
     if ok == 0 {
-        return;
+        None
+    } else {
+        Some((rect.left, rect.top, rect.right, rect.bottom))
     }
+}
+
+const POPUP_W: f64 = 252.0;
+const POPUP_H: f64 = 420.0;
+
+/// Set once the entrance slide has been kicked off for the current popup,
+/// so `popup_ready` and the watchdog can't both start it.
+static POPUP_SLIDE_STARTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Timestamp of the current popup's creation, for the slide diagnostics.
+static POPUP_T0: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+fn popup_ms() -> u128 {
+    POPUP_T0
+        .lock()
+        .unwrap()
+        .map(|t| t.elapsed().as_millis())
+        .unwrap_or(0)
+}
+
+/// Status the popup was opened with, held until the page reports it is ready
+/// to receive events (its listener does not exist before that).
+static POPUP_PENDING: std::sync::Mutex<Option<Status>> = std::sync::Mutex::new(None);
+
+/// Target position of the popup: horizontally centered, vertically centered in
+/// the work area. Also returns the "below the screen" start position used for
+/// the slide-up entrance.
+#[cfg(windows)]
+fn popup_positions(win: &tauri::WebviewWindow, w: f64, h: f64) -> Option<((i32, i32), (i32, i32))> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CYSCREEN};
+
+    let (left, top, right, bottom) = work_area()?;
     let scale = win.scale_factor().unwrap_or(1.0);
     let w_phys = (w * scale) as i32;
     let h_phys = (h * scale) as i32;
-    let x = rect.left + ((rect.right - rect.left) - w_phys) / 2;
-    let y = rect.top + ((rect.bottom - rect.top) - h_phys) / 2;
-    eprintln!(
-        "[popup] centering: work=({}, {})-({}, {}) scale={} -> pos=({}, {})",
-        rect.left, rect.top, rect.right, rect.bottom, scale, x, y
-    );
-    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+    let x = left + ((right - left) - w_phys) / 2;
+    let y = top + ((bottom - top) - h_phys) / 2;
+    // Start completely below the *panel*, not merely below the work area: the
+    // taskbar leaves a strip of desktop at the bottom and a window parked
+    // there would show its top edge.
+    let screen_h = unsafe { GetSystemMetrics(SM_CYSCREEN) };
+    let start_y = screen_h + 8;
+    Some(((x, y), (x, start_y)))
+}
+
+/// Move the popup window upward from its parked position below the screen to
+/// its centered resting place, easing out. Runs on a short-lived thread so the
+/// worker loop is never blocked.
+#[cfg(windows)]
+fn begin_popup_slide(win: &tauri::WebviewWindow) {
+    let Some(((x, to_y), (_, parked_y))) = popup_positions(win, POPUP_W, POPUP_H) else {
+        return;
+    };
+    let _ = win.set_position(tauri::PhysicalPosition::new(x, parked_y));
+    eprintln!("[popup] slide from y={} to y={} at x={}", parked_y, to_y, x);
+
+    let win = win.clone();
+    std::thread::spawn(move || {
+        const STEPS: i32 = 20;
+        const STEP_MS: u64 = 16; // ~320ms total
+        for i in 1..=STEPS {
+            // ease-out cubic: fast at the start, settling at the end
+            let t = i as f64 / STEPS as f64;
+            let eased = 1.0 - (1.0 - t).powi(3);
+            let y = parked_y + ((to_y - parked_y) as f64 * eased) as i32;
+            let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+            std::thread::sleep(Duration::from_millis(STEP_MS));
+        }
+        eprintln!("[popup] slide done, pos={:?}", win.outer_position());
+    });
 }
 
 /// Create the transparent, always-on-top popup window at the right side,
@@ -410,10 +524,16 @@ fn spawn_popup(app: &AppHandle, status: &Status) {
         let _ = w.destroy();
     }
 
-    let w = 252.0;
-    let h = 420.0;
+    let w = POPUP_W;
+    let h = POPUP_H;
 
-    eprintln!("[popup] building centered window {}x{}", w, h);
+    // Build hidden, park it below the screen, then slide it up once the page
+    // has actually painted. Doing the entrance with the real window (rather
+    // than an in-page CSS transform) is what makes it read like the Huawei
+    // popup rising from the bottom edge.
+    POPUP_SLIDE_STARTED.store(false, std::sync::atomic::Ordering::SeqCst);
+    *POPUP_T0.lock().unwrap() = Some(std::time::Instant::now());
+    *POPUP_PENDING.lock().unwrap() = Some(status.clone());
     let builder = WebviewWindowBuilder::new(app, "popup", WebviewUrl::App("popup.html".into()))
         .title("FreeClip 2")
         .inner_size(w, h)
@@ -422,16 +542,41 @@ fn spawn_popup(app: &AppHandle, status: &Status) {
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
-        .visible(true)
+        .visible(false)
         .shadow(false);
 
     match builder.build() {
         Ok(win) => {
             #[cfg(windows)]
-            center_on_work_area(&win, w, h);
+            {
+                if let Some(((x, to_y), (_, from_y))) = popup_positions(&win, w, h) {
+                    eprintln!("[popup] park at y={} (target y={}) x={}", from_y, to_y, x);
+                    // Place it off-screen before the first paint so the very
+                    // first visible frame is already below the screen.
+                    let _ = win.set_position(tauri::PhysicalPosition::new(x, from_y));
+                }
+            }
             let _ = win.show();
-            let _ = win.set_focus();
-            eprintln!("[popup] window shown OK");
+            eprintln!(
+                "[popup] after show: visible={:?} pos={:?} size={:?}",
+                win.is_visible(),
+                win.outer_position(),
+                win.outer_size()
+            );
+
+            // The page calls `popup_ready` after its first paint; only then is
+            // there anything to see, so only then does the slide make sense.
+            // This thread is the watchdog for a page that never reports in.
+            let app_w = app.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(900));
+                if !POPUP_SLIDE_STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    eprintln!("[popup] page never reported ready, sliding anyway");
+                    if let Some(w) = app_w.get_webview_window("popup") {
+                        begin_popup_slide(&w);
+                    }
+                }
+            });
 
             let st = status.clone();
             let app2 = app.clone();
@@ -658,6 +803,8 @@ pub fn run() {
             open_bluetooth_settings,
             quit_app,
             dismiss_popup,
+            slide_popup_out,
+            popup_ready,
             preview_popup,
             repair_bluetooth
         ])

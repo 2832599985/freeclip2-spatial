@@ -50,7 +50,7 @@ const $ = <T extends HTMLElement>(s: string) => document.querySelector<T>(s)!;
 // they must NOT push the dismissal back.
 const ANIM_MS = 4700;
 const HOLD_MS = 1500;
-const FADE_MS = 420;
+const FADE_MS = 320;
 let dismissing = false;
 let dismissTimer: number | undefined;
 
@@ -59,11 +59,12 @@ function dismiss() {
   dismissing = true;
   if (dismissTimer) clearTimeout(dismissTimer);
   $("#card").classList.add("leaving");
-  // Best-effort close. If the Tauri permission is denied, hiding the card
-  // still leaves nothing on screen, so the popup is effectively gone.
+  // Mirror the entrance: the real window slides back down off-screen while
+  // the card fades, then the window is destroyed.
+  invoke("slide_popup_out").catch(() => {});
   window.setTimeout(() => {
     invoke("dismiss_popup").catch(() => {});
-  }, FADE_MS);
+  }, FADE_MS + 220);
 }
 
 function startDismissTimer() {
@@ -97,5 +98,12 @@ window.setTimeout(() => {
 // Any click closes the popup (the original has no action button).
 $("#card").addEventListener("click", dismiss);
 $("#close").addEventListener("click", (e) => { e.stopPropagation(); dismiss(); });
+
+// The window is parked below the screen until we say the card has actually
+// painted — otherwise the entrance slide moves a blank white rectangle.
+// Two frames is enough for WebView2 to have committed the first paint.
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  invoke("popup_ready").catch(() => {});
+}));
 
 startDismissTimer();

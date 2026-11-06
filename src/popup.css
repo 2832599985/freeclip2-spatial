@@ -24,14 +24,12 @@ html, body { height: 100%; background: transparent; overflow: hidden; user-selec
   position: relative;
   overflow: hidden;
   cursor: pointer;
-  animation: slideIn .4s cubic-bezier(.16, 1, .3, 1) forwards;
-}
-@keyframes slideIn {
-  from { transform: translateY(16px) scale(.96); opacity: 0; }
-  to { transform: none; opacity: 1; }
+  /* No fade-in here: the rise from the bottom edge is done by moving the real
+     window in Rust, and the card must be fully opaque while it travels or the
+     slide is invisible. */
 }
 .card.leaving { animation: fadeOut .3s ease forwards; pointer-events: none; }
-@keyframes fadeOut { to { transform: translateY(10px) scale(.97); opacity: 0; } }
+@keyframes fadeOut { to { opacity: 0; } }
 
 .close {
   position: absolute; top: 10px; right: 10px; z-index: 5;
