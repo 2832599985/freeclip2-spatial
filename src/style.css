@@ -195,6 +195,20 @@ body {
   display: flex; align-items: center; justify-content: center; gap: 7px;
 }
 .btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-hover); }
+
+/* Repair action: only shown when the Bluetooth serial device is dead.
+   Accent-coloured so it reads as the one thing to click. */
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 2px 10px var(--accent-glow);
+}
+.btn.primary:hover { background: #3d5ef0; border-color: #3d5ef0; color: #fff; }
+.btn.primary:disabled { opacity: .6; cursor: default; box-shadow: none; }
+/* `display: flex` above would otherwise defeat the `hidden` attribute. */
+.btn[hidden] { display: none; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn svg { width: 14px; height: 14px; }
 .version { text-align: center; font-size: 10.5px; color: var(--text-faint); padding-top: 4px; }

@@ -11,6 +11,7 @@ type Status = {
   mode: number;
   battery: Battery | null;
   message: string;
+  needs_repair: boolean;
 };
 
 const caseIcon = `<svg viewBox="0 0 24 24"><path d="M4 9h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm1-3h14a1 1 0 0 1 1 1v1H4V7a1 1 0 0 1 1-1z"/></svg>`;

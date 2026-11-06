@@ -18,6 +18,7 @@ type Status = {
   mode: number;
   battery: Battery | null;
   message: string;
+  needs_repair: boolean;
 };
 
 const MODES = [
@@ -89,6 +90,7 @@ app.innerHTML = `
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.15.61.7 1.04 1.33 1.05H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>
         蓝牙设置
       </button>
+      <button class="btn primary" id="btn-repair" hidden>修复蓝牙串口</button>
       <button class="btn" id="btn-retry">重新检测</button>
       <button class="btn" id="btn-popup">弹窗预览</button>
     </div>
@@ -157,8 +159,14 @@ function render(s: Status) {
   $("#pill-text").textContent = s.connected ? "已连接" : "离线";
   $("#hero-sub").textContent = s.connected
     ? `${s.port} · ${s.message}`
-    : "离线 · 耳机未连接";
+    : s.message;
   $("#port-hint").textContent = s.connected ? (s.port ?? "") : "";
+
+  // A dead Bluetooth serial device object is fixable with one click;
+  // "earbuds switched off" is not, so the button stays hidden then.
+  const repairBtn = $("#btn-repair") as HTMLButtonElement;
+  repairBtn.hidden = !s.needs_repair;
+  repairBtn.disabled = s.message.includes("正在重启蓝牙");
 
   document.querySelectorAll<HTMLButtonElement>(".mode").forEach((btn) => {
     const v = Number(btn.dataset.mode);
@@ -199,7 +207,7 @@ async function refresh() {
     const s = await invoke<Status>("get_status");
     render(s);
   } catch (e) {
-    render({ connected: false, port: null, mode: 0, battery: null, message: String(e) });
+    render({ connected: false, port: null, mode: 0, battery: null, message: String(e), needs_repair: false });
   }
 }
 
@@ -217,6 +225,17 @@ document.querySelectorAll<HTMLButtonElement>(".mode").forEach((btn) => {
 });
 $("#btn-refresh").addEventListener("click", refresh);
 $("#btn-retry").addEventListener("click", refresh);
+$("#btn-repair").addEventListener("click", async () => {
+  const btn = $("#btn-repair") as HTMLButtonElement;
+  btn.disabled = true;
+  toast("正在重启蓝牙，约需 5 秒…");
+  try {
+    await invoke("repair_bluetooth");
+  } catch (e) {
+    toast(String(e), true);
+    btn.disabled = false;
+  }
+});
 $("#btn-settings").addEventListener("click", () => invoke("open_bluetooth_settings"));
 $("#btn-popup").addEventListener("click", () => invoke("preview_popup"));
 $("#btn-min").addEventListener("click", () => getCurrentWindow().hide());

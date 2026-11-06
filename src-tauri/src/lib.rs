@@ -20,6 +20,10 @@ pub struct Status {
     mode: u8,
     battery: Option<Battery>,
     message: String,
+    /// The Bluetooth serial port device object is dead: it is still listed by
+    /// PnP but refuses to open. Distinct from "earbuds are switched off",
+    /// where the port disappears from enumeration entirely.
+    needs_repair: bool,
 }
 
 impl Status {
@@ -30,6 +34,29 @@ impl Status {
             mode: 0,
             battery: None,
             message: "离线 · 耳机未连接".into(),
+            needs_repair: false,
+        }
+    }
+
+    fn broken() -> Self {
+        Status {
+            connected: false,
+            port: None,
+            mode: 0,
+            battery: None,
+            message: "蓝牙串口异常 · 点击修复".into(),
+            needs_repair: true,
+        }
+    }
+
+    fn repairing() -> Self {
+        Status {
+            connected: false,
+            port: None,
+            mode: 0,
+            battery: None,
+            message: "正在重启蓝牙，请稍候…".into(),
+            needs_repair: true,
         }
     }
 }
@@ -48,9 +75,28 @@ enum Request {
 
 struct WorkerTx(Mutex<Sender<Request>>);
 
+/// Result of a probe round.
+struct ProbeFail {
+    err: protocol::Error,
+    /// At least one port that Windows still lists could not be opened. That is
+    /// the signature of a dead BTHENUM device object (ERROR_NO_SUCH_DEVICE /
+    /// ERROR_SEM_TIMEOUT), which a Bluetooth radio restart fixes.
+    port_dead: bool,
+}
+
+impl From<ProbeFail> for Status {
+    fn from(f: ProbeFail) -> Self {
+        if f.port_dead {
+            Status::broken()
+        } else {
+            Status::offline()
+        }
+    }
+}
+
 /// Try to find the earbuds. Every candidate is opened, probed, and CLOSED
 /// immediately (RAII), so no COM handle ever survives this function.
-fn find_earbuds(override_port: Option<&str>, quick: bool) -> Result<(String, Buds), protocol::Error> {
+fn find_earbuds(override_port: Option<&str>, quick: bool) -> Result<(String, Buds), ProbeFail> {
     let mut candidates: Vec<String> = Vec::new();
     if let Some(p) = override_port {
         if !p.is_empty() {
@@ -63,10 +109,14 @@ fn find_earbuds(override_port: Option<&str>, quick: bool) -> Result<(String, Bud
         }
     }
     if candidates.is_empty() {
-        return Err(protocol::Error::Unavailable("没找到蓝牙虚拟串口".into()));
+        return Err(ProbeFail {
+            err: protocol::Error::Unavailable("没找到蓝牙虚拟串口".into()),
+            port_dead: false,
+        });
     }
 
     let mut last_err = protocol::Error::NoReply;
+    let mut port_dead = false;
     for name in &candidates {
         eprintln!("[find] try {} quick={}", name, quick);
         match Buds::open(name) {
@@ -83,12 +133,14 @@ fn find_earbuds(override_port: Option<&str>, quick: bool) -> Result<(String, Bud
             },
             Err(e) => {
                 eprintln!("[find] {} open fail: {:?}", name, e);
+                // The port is listed but the device object is gone/refusing.
+                port_dead = true;
                 last_err = e;
             }
         }
     }
-    eprintln!("[find] all failed: {:?}", last_err);
-    Err(last_err)
+    eprintln!("[find] all failed: {:?} (port_dead={})", last_err, port_dead);
+    Err(ProbeFail { err: last_err, port_dead })
 }
 
 /// Full status read (mode + battery). Called only from the worker thread.
@@ -132,6 +184,7 @@ fn full_status(cached_port: &mut Option<String>, quick: bool) -> Status {
                     mode: 0,
                     battery: None,
                     message: "已连接".into(),
+                    needs_repair: false,
                 };
             }
             let mode = buds.read_spatial().unwrap_or(0);
@@ -142,12 +195,14 @@ fn full_status(cached_port: &mut Option<String>, quick: bool) -> Status {
                 mode,
                 battery,
                 message: "已连接".into(),
+                needs_repair: false,
             }
         }
-        // Any low-level serial error while disconnected is just "offline".
-        Err(_) => {
+        // A dead port object gets its own state so the UI can offer a repair;
+        // a genuinely absent device is plain "offline".
+        Err(fail) => {
             *cached_port = None;
-            Status::offline()
+            Status::from(fail)
         }
     }
 }
@@ -173,6 +228,7 @@ fn set_spatial(tx: State<'_, WorkerTx>, mode: u8) -> Status {
             mode: 0,
             battery: None,
             message: "无效模式".into(),
+            needs_repair: false,
         };
     }
     let _ = tx.0.lock().unwrap().send(Request::SetMode(mode));
@@ -183,6 +239,7 @@ fn set_spatial(tx: State<'_, WorkerTx>, mode: u8) -> Status {
         mode,
         battery: None,
         message: "写入中…".into(),
+        needs_repair: false,
     }
 }
 
@@ -210,6 +267,99 @@ fn dismiss_popup(app: AppHandle) {
 #[tauri::command]
 fn preview_popup(tx: State<'_, WorkerTx>) {
     let _ = tx.0.lock().unwrap().send(Request::Preview);
+}
+
+/// Turn the Bluetooth radio off and back on. This forces Windows to
+/// re-enumerate every BTHENUM child device, which revives a COM port whose
+/// device object died while PnP still reports it as OK.
+///
+/// Implemented through PowerShell's WinRT bridge: the radio API is only a few
+/// lines there, whereas calling IAsyncOperation directly from Rust would drag
+/// in an async runtime for no benefit. Runs only on explicit user request.
+#[cfg(windows)]
+fn restart_bluetooth_radio() -> Result<(), String> {
+    let script = r#"
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$g = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+    $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
+    $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+})[0]
+function Await($op, $t) {
+    $task = $g.MakeGenericMethod($t).Invoke($null, @($op))
+    $task.Wait(-1) | Out-Null
+    $task.Result
+}
+[Windows.Devices.Radios.Radio, Windows.System.Devices, ContentType=WindowsRuntime] | Out-Null
+$radios = Await ([Windows.Devices.Radios.Radio]::GetRadiosAsync()) ([System.Collections.Generic.IReadOnlyList[Windows.Devices.Radios.Radio]])
+foreach ($r in $radios) {
+    if ($r.Kind -eq 'Bluetooth') {
+        Await ($r.SetStateAsync('Off')) ([Windows.Devices.Radios.RadioAccessStatus]) | Out-Null
+        Start-Sleep -Milliseconds 3500
+        Await ($r.SetStateAsync('On')) ([Windows.Devices.Radios.RadioAccessStatus]) | Out-Null
+        exit 0
+    }
+}
+exit 1
+"#;
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script])
+        .output()
+        .map_err(|e| format!("无法启动 PowerShell: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "蓝牙重启失败: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
+    }
+}
+
+/// User-triggered repair: restart the radio, then let the worker re-probe.
+/// Returns immediately; the result arrives through `status-changed`.
+#[tauri::command]
+fn repair_bluetooth(app: AppHandle, shared: State<'_, SharedStatus>) -> Status {
+    let shared = shared.0.clone();
+    let status = Status::repairing();
+    *shared.lock().unwrap() = status.clone();
+    let _ = app.emit("status-changed", &status);
+
+    let app2 = app.clone();
+    std::thread::spawn(move || {
+        let result = restart_bluetooth_radio();
+        match result {
+            Ok(()) => {
+                eprintln!("[repair] radio restarted");
+                // Give the stack a moment to re-enumerate BTHENUM children.
+                std::thread::sleep(Duration::from_millis(1500));
+                let s = Status {
+                    connected: false,
+                    port: None,
+                    mode: 0,
+                    battery: None,
+                    message: "蓝牙已重启，正在重新检测…".into(),
+                    needs_repair: false,
+                };
+                *shared.lock().unwrap() = s.clone();
+                let _ = app2.emit("status-changed", &s);
+            }
+            Err(e) => {
+                eprintln!("[repair] failed: {e}");
+                let s = Status {
+                    connected: false,
+                    port: None,
+                    mode: 0,
+                    battery: None,
+                    message: format!("修复失败：{e}"),
+                    needs_repair: true,
+                };
+                *shared.lock().unwrap() = s.clone();
+                let _ = app2.emit("status-changed", &s);
+            }
+        }
+    });
+
+    status
 }
 
 /// Center a window on the primary monitor's work area using Win32 physical
@@ -344,9 +494,10 @@ fn start_worker(app: AppHandle, shared: Arc<Mutex<Status>>, rx: std::sync::mpsc:
                                     } else {
                                         "写入后回读不一致，请重试".into()
                                     },
+                                    needs_repair: false,
                                 }
                             }
-                            Err(_) => Status::offline(),
+                            Err(fail) => Status::from(fail),
                         };
                         *shared.lock().unwrap() = s.clone();
                         let _ = app.emit("status-changed", &s);
@@ -360,6 +511,7 @@ fn start_worker(app: AppHandle, shared: Arc<Mutex<Status>>, rx: std::sync::mpsc:
                                 mode: 0,
                                 battery: Some(Battery { left: 100, right: 100, case: 62 }),
                                 message: "预览".into(),
+                                needs_repair: false,
                             };
                         }
                         spawn_popup(&app, &s);
@@ -404,7 +556,8 @@ fn start_worker(app: AppHandle, shared: Arc<Mutex<Status>>, rx: std::sync::mpsc:
                 let _ = app.emit("status-changed", &full);
                 last_full_poll = std::time::Instant::now();
             } else if !now {
-                *shared.lock().unwrap() = Status::offline();
+                // The cheap probe already carries the correct offline/broken state.
+                *shared.lock().unwrap() = probe;
             }
 
             if changed {
@@ -505,7 +658,8 @@ pub fn run() {
             open_bluetooth_settings,
             quit_app,
             dismiss_popup,
-            preview_popup
+            preview_popup,
+            repair_bluetooth
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
