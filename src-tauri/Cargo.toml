@@ -1,6 +1,6 @@
 [package]
 name = "freeclip2-spatial"
-version = "2.0.0"
+version = "2.0.1"
 description = "HUAWEI FreeClip 2 spatial audio control for Windows"
 authors = ["you"]
 edition = "2021"
